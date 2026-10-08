@@ -1,0 +1,54 @@
+Phase 1 — The Import Engine
+Goal: a PDF import pipeline that turns a scholarly PDF into a semantic, reflowable document with a multi-system reference graph, verified against the two attached benchmarks. No popups, annotations, or library UI in this phase.
+What the two benchmarks actually contain
+I inspected both files before writing this.
+The Odyssey (Mendelsohn, Chicago 2025) — 615 pages, letter size, produced by ConvertAPI, untagged (no PDF structure tree), Times New Roman roman + italic only, 1,658 link annotations, no `/GoTo` destinations, a document outline present. The poem body carries verse line numbers every 10 lines in the left margin (190, 200, 210…) with turn-over lines indented. The endnote apparatus is lemma-keyed, not marker-keyed: entries look like `517 I could never recite the names…:` and `519ff. Têlephos's son . . . :` — there is no `[517]` in the poem text to click. Notes themselves contain their own cross-reference language: `see note above on 4.240`, `(7.324)`, `see introduction, p. 6`, `Book 8 of the Iliad`.
+This is exactly the case Moon+ Reader collapses: the link between poem line and note is computed from book + line number, not from a hyperlink.
+Pride and Prejudice (Penguin Classics) — inline bracketed markers (`when tea was over,[1]`), a separate Notes section, plus Penguin's usual introduction/chronology/further-reading front matter. This is the "ordinary book, one endnote system" regression case that must never break.
+Architecture
+Parsing runs server-side on Lovable Cloud; results persist so the same file can be re-parsed as the parser improves and outputs diffed.
+```text
+upload PDF -> Cloud Storage
+      |
+      v
+[1] page extraction    pdfjs-dist -> per-page text items with x, y, font, size, weight
+[2] layout analysis    columns, margins, running heads/feet, footnote rules, block grouping
+[3] typographic profile cluster fonts/sizes into roles: body, verse, heading,
+                        note-body, note-lemma, caption, marginal number
+[4] structure builder   Part/Book/Chapter/Section tree from headings + outline
+[5] apparatus detector  discover each reference SYSTEM independently
+[6] reference resolver  build typed, bidirectional edges
+      |
+      v
+document model (JSON) + reference graph -> database
+```
+Because a 615-page file exceeds a single server request's budget, import is chunked: the client kicks off a job and the server processes page ranges, writing progress. The UI shows a live import log. Stages 3–6 run as a document-wide pass once page extraction completes.
+Stage 5 — apparatus discovery (the core of this phase)
+Systems are discovered, never assumed. A candidate system is proposed from evidence and only accepted if it is internally consistent across the document:
+Typography — the font/size/leading cluster the entries share.
+Zone — bottom-of-page below a rule (footnote), dedicated back-matter section (endnote), left margin (line number), inline in body (citation).
+Numbering grammar — `1,2,3` restarting per chapter; `1.234` book.line; `234ff.`; `*`, `†`; `[1]`; author-date `(Smith 1998)`.
+Governing heading — `Notes`, `Translator's Note`, `Textual Note`, `Bibliography`, `Glossary`, `Appendix A`.
+Linking pattern — whether entries key to markers, to line numbers, or to lemmas.
+Two collections stay separate whenever any of typography, zone, numbering grammar, or governing heading differ — numbers alone never merge them. Each accepted system is emitted with a confidence score and the evidence that produced it.
+Structure vs. cross-reference
+A dedicated disambiguation pass, because this is where naive parsers fail:
+A `Book III` that is its own block, in heading typography, at the top of a page, and matches the outline/TOC → structure node.
+The same string inside a running sentence → cross-reference edge pointing at that structure node.
+Guards: `party` never yields `Part Y`; `book. I` stays a sentence boundary unless the following token is a structural numeral and the sentence carries reference language (`see`, `cf.`, `in`, `at`). Every candidate must resolve to a structure node that actually exists, or it is left as plain text.
+Stage 6 — reference edges
+Each edge stores: source location, reference type, owning system id, resolved target, back-link, resolution method (`marker`, `line-key`, `lemma-match`, `annotation`, `heuristic`), and confidence. `see note above on 3.109` becomes a real edge into the note system, not text. Unresolved candidates are kept as diagnostics rather than silently dropped.
+What you will see
+An import screen and, per document, a two-part result:
+Inspector — structure tree; one card per discovered reference system (type, entry count, numbering grammar, typographic signature, evidence, confidence, sample entries); the edge table with resolution methods; and an "unresolved / ambiguous" list. This is the regression surface: run the Odyssey through it and every apparatus should appear as its own card.
+Reading pane — the normalized document rendered plainly and responsively: paragraphs, emphasis, verse lines with hanging indents and line numbers preserved, headings, images, tables. No page images. Reference markers render as inert highlights for now, so fidelity can be judged before popups exist.
+Acceptance for this phase
+Odyssey: verse lineation preserved; endnotes recovered as a lemma/line-keyed system distinct from the introduction's own notes; note-internal `x.yyy` and `see note above on` references resolved to real targets; running heads and page-number furniture stripped.
+Pride and Prejudice: `[n]` markers resolve to endnote entries and back; front matter separated from the novel; no false structure nodes from ordinary prose.
+No text loss versus `pdftotext` on either file; every reference system carries its evidence and confidence.
+Technical notes
+`pdfjs-dist` for text-item extraction with positions and font refs; no rendering to canvas, no OCR (both files have real text layers).
+Parser is pure functions over a page-item array, kept independent of the PDF layer so EPUB3 and DOCX importers can feed the same model in phase 2.
+Document model and reference graph stored in Lovable Cloud, with a JSON export per document for diffing parses between iterations.
+Deliberately out of scope here
+Popups, sidebar, annotations, TTS, themes, library management, EPUB3/DOCX importers. They come next, against a model that is already correct.
