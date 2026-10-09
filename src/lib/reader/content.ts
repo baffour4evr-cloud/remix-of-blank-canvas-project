@@ -1,3 +1,4 @@
+import { verseGateFor } from "../engine/adapt";
 import type { DocProfile, PageLines } from "./layout";
 import { modeOf, type Line } from "./lines";
 import type { Block, Provenance, RawDoc, StructureNode, StructureType, Run } from "./types";
@@ -390,10 +391,17 @@ export function buildContent(doc: RawDoc, pages: PageLines[], profile: DocProfil
   const lexicon = buildLexicon(pages);
   const verseSectionIds = new Set<string>();
   const bodyWidth = Math.max(80, profile.maxRight - profile.proseLeft);
+  const verseGate = verseGateFor(pages, profile.bodySize, profile.leading || 14);
+  if (verseGate) console.info("[verse-gate]", verseGate.reason);
 
   for (const p of pages) {
     const body = p.lines.filter((l) => !l.furniture);
     const zones = zonesFor(body, profile);
+    if (verseGate) {
+      for (const [line, zone] of zones) {
+        if (zone.verse && !verseGate.allows(line)) zones.set(line, { ...zone, verse: false });
+      }
+    }
     // Leading is a *local* property: commentary is set tighter than the poem, and
     // a global mode makes every second line of a note look like a new paragraph.
     const localLeading = localLeadingOf(body) || profile.leading || 14;
