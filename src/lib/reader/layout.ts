@@ -1,5 +1,5 @@
 import { buildLines, modeOf, percentile, type Line } from "./lines";
-import { planEngineFurniture } from "../engine/adapt";
+// import { planEngineFurniture } from "../engine/adapt";
 import type { RawDoc } from "./types";
 
 export interface DocProfile {
@@ -164,11 +164,11 @@ export function layoutPages(doc: RawDoc): LayoutResult {
   // Sequence-based page numbers and locally repeating running heads (src/lib/engine).
   // Additive: lines removed above stay removed; this only catches what the exact-repeat
   // rules above miss (OCR-noisy numerals, misread digits, chapter-specific running heads).
-  const enginePlan = planEngineFurniture(pages);
-  for (const k of enginePlan.kills) {
-    if (STRUCTURAL_LINE.test(k.line.text)) continue;
-    kill(k.line, k.classification, k.reason, k.confidence);
-  }
+  //   const enginePlan = planEngineFurniture(pages);
+  //   for (const k of enginePlan.kills) {
+  //     if (STRUCTURAL_LINE.test(k.line.text)) continue;
+  //     kill(k.line, k.classification, k.reason, k.confidence);
+  //   }
 
   // --- printed page map -----------------------------------------------------
   // The numerals just removed are the edition's own pagination. Keeping the
@@ -185,11 +185,11 @@ export function layoutPages(doc: RawDoc): LayoutResult {
     if (pageMap.some((e) => e.pdfPage === r.page)) continue;
     pageMap.push({ pdfPage: r.page, printed, roman: !arabic });
   }
-  for (const e of enginePlan.pageMap) {
-    const at = pageMap.findIndex((x) => x.pdfPage === e.pdfPage);
-    if (at < 0) pageMap.push(e);
-    else pageMap[at] = e; // the sequence-backed value corrects a misread numeral
-  }
+  //   for (const e of enginePlan.pageMap) {
+  //     const at = pageMap.findIndex((x) => x.pdfPage === e.pdfPage);
+  //     if (at < 0) pageMap.push(e);
+  //     else pageMap[at] = e; // the sequence-backed value corrects a misread numeral
+  //   }
   pageMap.sort((a, b) => a.pdfPage - b.pdfPage);
 
   return {
